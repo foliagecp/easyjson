@@ -2,6 +2,10 @@
 
 A Go package for ease and simple operations with JSON data.
 
+![Lint][Lint-Status-Image-Url]
+
+[Lint-Status-Image-Url]: https://github.com/foliagecp/easyjson/actions/workflows/golangci-lint.yml/badge.svg
+
 ## Overview
 
 Easy JSON is a Go package that provides a convenient way to work with JSON data. It offers functionality for creating, manipulating, and comparing JSON objects and arrays.
