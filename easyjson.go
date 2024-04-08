@@ -84,8 +84,12 @@ func (j1 JSON) Equals(j2 JSON) bool {
 	return false
 }
 
-func (j JSON) PathExists(p string) bool {
-	path := strings.Split(p, ".")
+func (j JSON) PathExists(p string, delimiter ...string) bool {
+	delim := "."
+	if len(delimiter) > 0 {
+		delim = delimiter[0]
+	}
+	path := strings.Split(p, delim)
 	if len(path) > 0 && len(path[0]) > 0 { // Not an empty path
 		switch j.Value.(type) {
 		case map[string]interface{}: // JSON object
@@ -95,7 +99,7 @@ func (j JSON) PathExists(p string) bool {
 				if len(path) == 1 {
 					return true
 				} else { // More than one key in path (recursive call is only possible when there is a path's tail)
-					return jRes.PathExists(strings.Join(path[1:], "."))
+					return jRes.PathExists(strings.Join(path[1:], delim))
 				}
 			} else {
 				return false
@@ -109,7 +113,7 @@ func (j JSON) PathExists(p string) bool {
 						if len(path) == 1 {
 							return true
 						} else { // More than one key in path (recursive call is only possible when there is a path's tail)
-							return jRes.PathExists(strings.Join(path[1:], "."))
+							return jRes.PathExists(strings.Join(path[1:], delim))
 						}
 					}
 				}
@@ -123,8 +127,12 @@ func (j JSON) PathExists(p string) bool {
 	}
 }
 
-func (j JSON) GetByPath(p string) JSON {
-	path := strings.Split(p, ".")
+func (j JSON) GetByPath(p string, delimiter ...string) JSON {
+	delim := "."
+	if len(delimiter) > 0 {
+		delim = delimiter[0]
+	}
+	path := strings.Split(p, delim)
 	if len(path) > 0 && len(path[0]) > 0 { // Not an empty path
 		switch j.Value.(type) {
 		case map[string]interface{}: // JSON object
@@ -134,7 +142,7 @@ func (j JSON) GetByPath(p string) JSON {
 				if len(path) == 1 {
 					return jRes
 				} else { // More than one key in path (recursive call is only possible when there is a path's tail)
-					return jRes.GetByPath(strings.Join(path[1:], "."))
+					return jRes.GetByPath(strings.Join(path[1:], delim))
 				}
 			} else {
 				//fmt.Printf(`Key "%s" does not exist in JSON object: %s`+"\n", path[0], j.ToString())
@@ -149,7 +157,7 @@ func (j JSON) GetByPath(p string) JSON {
 						if len(path) == 1 {
 							return jRes
 						} else { // More than one key in path (recursive call is only possible when there is a path's tail)
-							return jRes.GetByPath(strings.Join(path[1:], "."))
+							return jRes.GetByPath(strings.Join(path[1:], delim))
 						}
 					}
 				}
@@ -258,8 +266,8 @@ func jvDeepMerge(jv1 *interface{}, jv2 *interface{}) {
 	}
 }
 
-func jvRemoveValueByPath(jv *interface{}, p string) bool {
-	path := strings.Split(p, ".")
+func jvRemoveValueByPath(jv *interface{}, p string, delimiter string) bool {
+	path := strings.Split(p, delimiter)
 	if len(path) > 0 && len(path[0]) > 0 { // Not an empty path
 		switch (*jv).(type) {
 		case map[string]interface{}: // JSON object
@@ -272,7 +280,7 @@ func jvRemoveValueByPath(jv *interface{}, p string) bool {
 					if !keyExists { // Return true cause nothing to remove
 						return true
 					}
-					return jvRemoveValueByPath(&jRes, strings.Join(path[1:], "."))
+					return jvRemoveValueByPath(&jRes, strings.Join(path[1:], delimiter), delimiter)
 				}
 			}
 		case []interface{}: // JSON array
@@ -283,7 +291,7 @@ func jvRemoveValueByPath(jv *interface{}, p string) bool {
 						jArr[arrayId] = nil
 						return true
 					} else { // More than one key in path (recursive call is only possible when there is a path's tail)
-						return jvRemoveValueByPath(&jArr[arrayId], strings.Join(path[1:], "."))
+						return jvRemoveValueByPath(&jArr[arrayId], strings.Join(path[1:], delimiter), delimiter)
 					}
 				}
 			}
@@ -315,8 +323,12 @@ func jvSetArrayValue(jArray *[]interface{}, id int, v interface{}) bool {
 	return false
 }
 
-func (j *JSON) SetByPath(p string, v JSON) bool {
-	return jvSetValueByPath(nil, "", &j.Value, p, &v.Value, ".")
+func (j *JSON) SetByPath(p string, v JSON, delimiter ...string) bool {
+	delim := "."
+	if len(delimiter) > 0 {
+		delim = delimiter[0]
+	}
+	return jvSetValueByPath(nil, "", &j.Value, p, &v.Value, delim)
 }
 
 func (j *JSON) SetByPathCustomDelimiter(p string, v JSON, delimiter string) bool {
@@ -331,8 +343,12 @@ func (j *JSON) DeepMerge(v JSON) {
 	}
 }
 
-func (j *JSON) RemoveByPath(p string) bool {
-	return jvRemoveValueByPath(&j.Value, p)
+func (j *JSON) RemoveByPath(p string, delimiter ...string) bool {
+	delim := "."
+	if len(delimiter) > 0 {
+		delim = delimiter[0]
+	}
+	return jvRemoveValueByPath(&j.Value, p, delim)
 }
 
 func jvValueToBytes(jv interface{}) []byte {
