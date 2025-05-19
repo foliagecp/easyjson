@@ -1,5 +1,3 @@
-
-
 // Easy JSON package.
 // Provides everything that is needed for ease and simple operating with JSON data structure
 package easyjson
@@ -7,6 +5,7 @@ package easyjson
 import (
 	"encoding/hex"
 	"encoding/json"
+	"reflect"
 	"strconv"
 	"strings"
 )
@@ -46,7 +45,7 @@ func NewJSONArray() JSON {
 	return NewJSON(make([]interface{}, 0))
 }
 
-func (j1 JSON) Equals(j2 JSON) bool {
+/*func (j1 JSON) Equals(j2 JSON) bool {
 	if j1.IsObject() && j2.IsObject() {
 		if len(j1.ObjectKeys()) == len(j2.ObjectKeys()) {
 			for _, key := range j1.ObjectKeys() {
@@ -82,6 +81,10 @@ func (j1 JSON) Equals(j2 JSON) bool {
 		return true
 	}
 	return false
+}*/
+
+func (j1 JSON) Equals(j2 JSON) bool {
+	return reflect.DeepEqual(j1.Value, j2.Value)
 }
 
 func (j JSON) PathExists(p string, delimiter ...string) bool {
