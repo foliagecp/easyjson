@@ -340,7 +340,7 @@ func (j *JSON) SetByPathCustomDelimiter(p string, v JSON, delimiter string) bool
 
 func (j *JSON) DeepMerge(v JSON) {
 	if j == nil {
-		*j = v
+		j = &v
 	} else {
 		jvDeepMerge(&j.Value, &v.Value)
 	}
