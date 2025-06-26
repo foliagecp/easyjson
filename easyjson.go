@@ -1,5 +1,5 @@
-// Easy JSON package.
-// Provides everything that is needed for ease and simple operating with JSON data structure
+// Package easyjson provides everything that is needed for ease and simple operating with JSON data structure.
+// It offers a fluent API for JSON manipulation, path-based access, and builder patterns.
 package easyjson
 
 import (
@@ -10,16 +10,19 @@ import (
 	"strings"
 )
 
+// JSON represents a JSON value that can be manipulated using path-based operations.
 type JSON struct {
 	Value interface{}
 }
 
+// NewJSON creates a new JSON instance from any Go value.
 func NewJSON(value interface{}) JSON {
 	var j JSON
 	j.Value = value
 	return j
 }
 
+// NewJSONBytes creates a new JSON instance from byte slice, encoding it as hex string.
 func NewJSONBytes(value []byte) JSON {
 	codedBytes := hex.EncodeToString(value)
 	var j JSON
@@ -27,20 +30,24 @@ func NewJSONBytes(value []byte) JSON {
 	return j
 }
 
+// NewJSONNull creates a new JSON instance with null value.
 func NewJSONNull() JSON {
 	return NewJSON(nil)
 }
 
+// NewJSONObject creates a new empty JSON object.
 func NewJSONObject() JSON {
 	return NewJSON(make(map[string]interface{}))
 }
 
+// NewJSONObjectWithKeyValue creates a new JSON object with a single key-value pair.
 func NewJSONObjectWithKeyValue(key string, value JSON) JSON {
 	m := make(map[string]interface{})
 	m[key] = value.Value
 	return NewJSON(m)
 }
 
+// NewJSONArray creates a new empty JSON array.
 func NewJSONArray() JSON {
 	return NewJSON(make([]interface{}, 0))
 }
@@ -83,10 +90,13 @@ func NewJSONArray() JSON {
 	return false
 }*/
 
+// Equals compares two JSON values for deep equality.
 func (j1 JSON) Equals(j2 JSON) bool {
 	return reflect.DeepEqual(j1.Value, j2.Value)
 }
 
+// PathExists checks if a path exists in the JSON structure.
+// Path can use custom delimiter (default is ".").
 func (j JSON) PathExists(p string, delimiter ...string) bool {
 	delim := "."
 	if len(delimiter) > 0 {
@@ -130,6 +140,8 @@ func (j JSON) PathExists(p string, delimiter ...string) bool {
 	}
 }
 
+// GetByPath retrieves a value from JSON using dot-notation path.
+// Returns NewJSONNull() if path doesn't exist.
 func (j JSON) GetByPath(p string, delimiter ...string) JSON {
 	delim := "."
 	if len(delimiter) > 0 {
@@ -175,11 +187,13 @@ func (j JSON) GetByPath(p string, delimiter ...string) JSON {
 	}
 }
 
+// GetByPathPtr returns a pointer to the JSON value at the specified path.
 func (j JSON) GetByPathPtr(p string) *JSON {
 	res := j.GetByPath(p)
 	return &res
 }
 
+// GetPtr returns a pointer to this JSON instance.
 func (j JSON) GetPtr() *JSON {
 	return &j
 }
@@ -326,6 +340,8 @@ func jvSetArrayValue(jArray *[]interface{}, id int, v interface{}) bool {
 	return false
 }
 
+// SetByPath sets a value at the specified path in the JSON structure.
+// Creates intermediate objects/arrays as needed.
 func (j *JSON) SetByPath(p string, v JSON, delimiter ...string) bool {
 	delim := "."
 	if len(delimiter) > 0 {
@@ -334,10 +350,12 @@ func (j *JSON) SetByPath(p string, v JSON, delimiter ...string) bool {
 	return jvSetValueByPath(nil, "", &j.Value, p, &v.Value, delim)
 }
 
+// SetByPathCustomDelimiter sets a value using a custom path delimiter.
 func (j *JSON) SetByPathCustomDelimiter(p string, v JSON, delimiter string) bool {
 	return jvSetValueByPath(nil, "", &j.Value, p, &v.Value, delimiter)
 }
 
+// DeepMerge merges another JSON value into this one recursively.
 func (j *JSON) DeepMerge(v JSON) {
 	if j == nil {
 		j = &v
@@ -346,6 +364,7 @@ func (j *JSON) DeepMerge(v JSON) {
 	}
 }
 
+// RemoveByPath removes a value at the specified path.
 func (j *JSON) RemoveByPath(p string, delimiter ...string) bool {
 	delim := "."
 	if len(delimiter) > 0 {
@@ -363,58 +382,70 @@ func jvValueToString(jv interface{}) string {
 	return string(jvValueToBytes(jv))
 }
 
+// Clone creates a deep copy of the JSON value.
 func (j JSON) Clone() JSON {
 	json, _ := JSONFromString(j.ToString())
 	return json
 }
 
+// ToBytes converts the JSON value to byte slice.
 func (j JSON) ToBytes() []byte {
 	return jvValueToBytes(j.Value)
 }
 
+// ToString converts the JSON value to string representation.
 func (j JSON) ToString() string {
 	return jvValueToString(j.Value)
 }
 
+// IsNull checks if the JSON value is null.
 func (j JSON) IsNull() bool {
 	return j.Value == nil
 }
 
+// IsObject checks if the JSON value is an object.
 func (j JSON) IsObject() bool {
 	_, ok := j.AsObject()
 	return ok
 }
 
+// IsArray checks if the JSON value is an array.
 func (j JSON) IsArray() bool {
 	_, ok := j.AsArray()
 	return ok
 }
 
+// IsNumeric checks if the JSON value is a number.
 func (j JSON) IsNumeric() bool {
 	_, ok := j.AsNumeric()
 	return ok
 }
 
+// IsString checks if the JSON value is a string.
 func (j JSON) IsString() bool {
 	_, ok := j.AsString()
 	return ok
 }
 
+// IsBool checks if the JSON value is a boolean.
 func (j JSON) IsBool() bool {
 	_, ok := j.AsBool()
 	return ok
 }
 
+// AsObject returns the JSON value as a map if it's an object.
 func (j JSON) AsObject() (map[string]interface{}, bool) {
 	val, ok := j.Value.(map[string]interface{})
 	return val, ok
 }
 
+// AsArray returns the JSON value as a slice if it's an array.
 func (j JSON) AsArray() ([]interface{}, bool) {
 	val, ok := j.Value.([]interface{})
 	return val, ok
 }
 
+// AsArrayString returns the JSON array as a string slice if all elements are strings.
 func (j JSON) AsArrayString() ([]string, bool) {
 	if array, ok := j.AsArray(); ok {
 		strArray := make([]string, len(array))
@@ -433,6 +464,7 @@ func (j JSON) AsArrayString() ([]string, bool) {
 	return make([]string, 0), false
 }
 
+// AddToArray adds an element to the JSON array.
 func (j *JSON) AddToArray(jElem JSON) {
 	if jv, ok := j.Value.([]interface{}); ok {
 		jvAddValueToArray(&jv, jElem.Value)
@@ -440,6 +472,7 @@ func (j *JSON) AddToArray(jElem JSON) {
 	}
 }
 
+// ArraySize returns the size of the JSON array, or -1 if not an array.
 func (j JSON) ArraySize() int {
 	if array, ok := j.AsArray(); ok {
 		return len(array)
@@ -447,6 +480,7 @@ func (j JSON) ArraySize() int {
 	return -1
 }
 
+// ArrayElement returns the element at the specified index in the JSON array.
 func (j JSON) ArrayElement(num int) JSON {
 	size := j.ArraySize()
 	if size >= 0 && num < size {
@@ -456,6 +490,7 @@ func (j JSON) ArrayElement(num int) JSON {
 	return NewJSONNull()
 }
 
+// ObjectKeys returns all keys of the JSON object.
 func (j JSON) ObjectKeys() []string {
 	if object, ok := j.AsObject(); ok {
 		var keys []string
@@ -467,18 +502,22 @@ func (j JSON) ObjectKeys() []string {
 	return []string{}
 }
 
+// KeysCount returns the number of keys in the JSON object.
 func (j JSON) KeysCount() int {
 	return len(j.ObjectKeys())
 }
 
+// IsNonEmptyObject checks if the JSON value is a non-empty object.
 func (j JSON) IsNonEmptyObject() bool {
 	return len(j.ObjectKeys()) > 0
 }
 
+// IsNonEmptyArray checks if the JSON value is a non-empty array.
 func (j JSON) IsNonEmptyArray() bool {
 	return j.ArraySize() > 0
 }
 
+// AsNumeric returns the JSON value as a float64 if it's numeric.
 func (j JSON) AsNumeric() (float64, bool) {
 	switch j.Value.(type) {
 	case float64:
@@ -502,6 +541,7 @@ func (j JSON) AsNumeric() (float64, bool) {
 	}
 }
 
+// AsString returns the JSON value as a string if it's a string.
 func (j JSON) AsString() (string, bool) {
 	switch j.Value.(type) {
 	case string:
@@ -511,6 +551,7 @@ func (j JSON) AsString() (string, bool) {
 	}
 }
 
+// AsBytes returns the JSON value as bytes if it's a hex-encoded string.
 func (j JSON) AsBytes() ([]byte, bool) {
 	switch j.Value.(type) {
 	case string:
@@ -523,6 +564,7 @@ func (j JSON) AsBytes() ([]byte, bool) {
 	}
 }
 
+// AsBool returns the JSON value as a boolean if it's a boolean.
 func (j JSON) AsBool() (bool, bool) {
 	switch j.Value.(type) {
 	case bool:
@@ -532,6 +574,7 @@ func (j JSON) AsBool() (bool, bool) {
 	}
 }
 
+// AsNumericDefault returns the JSON value as float64 or defaultValue if not numeric.
 func (j JSON) AsNumericDefault(defaultValue float64) float64 {
 	if v, ok := j.AsNumeric(); ok {
 		return v
@@ -539,6 +582,7 @@ func (j JSON) AsNumericDefault(defaultValue float64) float64 {
 	return defaultValue
 }
 
+// AsStringDefault returns the JSON value as string or defaultValue if not string.
 func (j JSON) AsStringDefault(defaultValue string) string {
 	if v, ok := j.AsString(); ok {
 		return v
@@ -546,6 +590,7 @@ func (j JSON) AsStringDefault(defaultValue string) string {
 	return defaultValue
 }
 
+// AsBoolDefault returns the JSON value as boolean or defaultValue if not boolean.
 func (j JSON) AsBoolDefault(defaultValue bool) bool {
 	if v, ok := j.AsBool(); ok {
 		return v
@@ -553,6 +598,7 @@ func (j JSON) AsBoolDefault(defaultValue bool) bool {
 	return defaultValue
 }
 
+// JSONFromBytes creates a JSON instance from byte slice by parsing it as JSON.
 func JSONFromBytes(b []byte) (JSON, bool) {
 	var j JSON
 	if err := json.Unmarshal(b, &j.Value); err != nil {
@@ -561,16 +607,89 @@ func JSONFromBytes(b []byte) (JSON, bool) {
 	return j, true
 }
 
+// JSONFromString creates a JSON instance from string by parsing it as JSON.
 func JSONFromString(s string) (JSON, bool) {
 	s = strings.Replace(s, "\n", "", -1)
 	s = strings.Replace(s, "\t", "", -1)
 	return JSONFromBytes([]byte(s))
 }
 
+// JSONFromArray creates a JSON array from any comparable slice.
 func JSONFromArray[T comparable](array []T) JSON {
 	new_array := make([]interface{}, len(array))
 	for i, v := range array {
 		new_array[i] = v
 	}
 	return NewJSON(new_array)
+}
+
+// SetByPaths sets multiple paths at once for better DX
+func (j *JSON) SetByPaths(pathValues map[string]interface{}) {
+	for path, value := range pathValues {
+		j.SetByPath(path, NewJSON(value))
+	}
+}
+
+// NewJSONObjectFromMap creates JSON object directly from map
+func NewJSONObjectFromMap(data map[string]interface{}) JSON {
+	result := NewJSONObject()
+	for k, v := range data {
+		result.SetByPath(k, NewJSON(v))
+	}
+	return result
+}
+
+// BuildFromTemplate builds JSON from template with value substitution
+func BuildFromTemplate(template map[string]interface{}) JSON {
+	return NewJSONObjectFromMap(template)
+}
+
+// JSONBuilder provides fluent interface for JSON construction.
+// It allows method chaining for building complex JSON structures efficiently.
+type JSONBuilder struct {
+	json JSON
+}
+
+// NewJSONBuilder creates a new JSON builder
+func NewJSONBuilder() *JSONBuilder {
+	return &JSONBuilder{json: NewJSONObject()}
+}
+
+// Set sets a path value and returns builder for chaining
+func (b *JSONBuilder) Set(path string, value interface{}) *JSONBuilder {
+	b.json.SetByPath(path, NewJSON(value))
+	return b
+}
+
+// SetIfNotEmpty sets value only if it's not empty/zero
+func (b *JSONBuilder) SetIfNotEmpty(path string, value interface{}) *JSONBuilder {
+	if value != nil && value != "" && value != 0 {
+		b.json.SetByPath(path, NewJSON(value))
+	}
+	return b
+}
+
+// AddToArray adds value to array at path
+func (b *JSONBuilder) AddToArray(path string, value interface{}) *JSONBuilder {
+	if !b.json.PathExists(path) {
+		b.json.SetByPath(path, NewJSONArray())
+	}
+	arr := b.json.GetByPath(path)
+	arr.AddToArray(NewJSON(value))
+	b.json.SetByPath(path, arr)
+	return b
+}
+
+// Build returns the final JSON object
+func (b *JSONBuilder) Build() JSON {
+	return b.json
+}
+
+// BuildArrayFromSlice creates JSON array from Go slice with transformation
+func BuildArrayFromSlice[T any](slice []T, transform func(T) map[string]interface{}) JSON {
+	arr := NewJSONArray()
+	for _, item := range slice {
+		arr.AddToArray(NewJSONObjectFromMap(transform(item)))
+	}
+	return arr
 }
