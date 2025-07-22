@@ -15,9 +15,22 @@ type JSON struct {
 }
 
 func NewJSON(value interface{}) JSON {
-	var j JSON
-	j.Value = value
-	return j
+	if value == nil {
+		return JSON{Value: nil}
+	}
+
+	val := reflect.ValueOf(value)
+	typ := reflect.TypeOf(value)
+	if typ.Kind() == reflect.Slice && typ.Elem().Kind() != reflect.Interface {
+		length := val.Len()
+		result := make([]interface{}, length)
+		for i := 0; i < length; i++ {
+			result[i] = val.Index(i).Interface()
+		}
+		return JSON{Value: result}
+	}
+
+	return JSON{Value: value}
 }
 
 func NewJSONBytes(value []byte) JSON {
@@ -567,6 +580,7 @@ func JSONFromString(s string) (JSON, bool) {
 	return JSONFromBytes([]byte(s))
 }
 
+// Deprecated: JSONFromArray is no longer needed — use NewJSON instead, it now handles slices properly.
 func JSONFromArray[T comparable](array []T) JSON {
 	new_array := make([]interface{}, len(array))
 	for i, v := range array {
