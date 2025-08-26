@@ -209,15 +209,27 @@ func BenchmarkCloneFast(b *testing.B) {
 }
 
 /*
+➜  easyjson git:(bench-clone) ✗ go test -cpu=1,2,4,8 -bench=BenchmarkClone -benchtime=1000000x -benchmem
+goos: linux
+goarch: amd64
+pkg: github.com/foliagecp/easyjson
+cpu: AMD Ryzen 5 5600X 6-Core Processor
+BenchmarkCloneFast       1000000              1725 ns/op            2184 B/op         18 allocs/op
+BenchmarkCloneFast-2     1000000              1351 ns/op            2184 B/op         18 allocs/op
+BenchmarkCloneFast-4     1000000              1511 ns/op            2184 B/op         18 allocs/op
+BenchmarkCloneFast-8     1000000              1512 ns/op            2184 B/op         18 allocs/op
+PASS
+ok      github.com/foliagecp/easyjson   6.109s
+
 ➜  easyjson git:(bench-clone) go test -cpu=1,2,4,8 -bench=BenchmarkClone -benchtime=1000000x -benchmem
 goos: linux
 goarch: amd64
 pkg: github.com/foliagecp/easyjson
 cpu: AMD Ryzen 5 5600X 6-Core Processor
-BenchmarkCloneFast       1000000             11224 ns/op            5768 B/op        130 allocs/op
-BenchmarkCloneFast-2     1000000              9449 ns/op            5768 B/op        130 allocs/op
-BenchmarkCloneFast-4     1000000              9908 ns/op            5770 B/op        130 allocs/op
-BenchmarkCloneFast-8     1000000              9903 ns/op            5771 B/op        130 allocs/op
+BenchmarkCloneSlow       1000000             11224 ns/op            5768 B/op        130 allocs/op
+BenchmarkCloneSlow-2     1000000              9449 ns/op            5768 B/op        130 allocs/op
+BenchmarkCloneSlow-4     1000000              9908 ns/op            5770 B/op        130 allocs/op
+BenchmarkCloneSlow-8     1000000              9903 ns/op            5771 B/op        130 allocs/op
 PASS
 ok      github.com/foliagecp/easyjson   40.490s
 */
