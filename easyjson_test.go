@@ -165,3 +165,33 @@ func BenchmarkNewApproachBuilder(b *testing.B) {
 		_ = json.ToString()
 	}
 }
+
+func BenchmarkCloneFast(b *testing.B) {
+	testData := NewJSONBuilder().
+		Set("ip_address", "192.168.1.100").
+		Set("port", 8080).
+		Set("enabled", true).
+		Set("nested.config.timeout", 5000).
+		Set("nested.config.retries", 3).
+		AddToArray("servers", "server1").
+		AddToArray("servers", "server2").
+		AddToArray("servers", "server3").
+		Build()
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		cloned := testData.Clone()
+		_ = cloned
+	}
+}
+
+/*
+➜  easyjson git:(bench-clone) ✗ go test -bench=BenchmarkClone -benchtime=1000000x -benchmem
+goos: linux
+goarch: amd64
+pkg: github.com/foliagecp/easyjson
+cpu: AMD Ryzen 5 5600X 6-Core Processor
+BenchmarkCloneFast-12            1000000              4331 ns/op            2633 B/op         58 allocs/op
+PASS
+ok      github.com/foliagecp/easyjson   4.336s
+*/
