@@ -167,16 +167,39 @@ func BenchmarkNewApproachBuilder(b *testing.B) {
 }
 
 func BenchmarkCloneFast(b *testing.B) {
-	testData := NewJSONBuilder().
-		Set("ip_address", "192.168.1.100").
-		Set("port", 8080).
-		Set("enabled", true).
-		Set("nested.config.timeout", 5000).
-		Set("nested.config.retries", 3).
-		AddToArray("servers", "server1").
-		AddToArray("servers", "server2").
-		AddToArray("servers", "server3").
-		Build()
+	testData := NewJSONObject()
+
+	testData.SetByPath("name", NewJSON("test-service"))
+	testData.SetByPath("version", NewJSON("1.2.3"))
+	testData.SetByPath("enabled", NewJSON(true))
+
+	configMap := map[string]interface{}{
+		"host":    "localhost",
+		"port":    8080,
+		"timeout": 30,
+		"retries": 3,
+		"ssl":     true,
+	}
+	testData.SetByPath("config", NewJSON(configMap))
+
+	usersMap := map[string]interface{}{
+		"admin": map[string]interface{}{
+			"password":    "secret123",
+			"permissions": []interface{}{"read", "write", "admin"},
+			"active":      true,
+		},
+		"user1": map[string]interface{}{
+			"password":    "pass456",
+			"permissions": []interface{}{"read"},
+			"active":      false,
+		},
+		"user2": map[string]interface{}{
+			"password":    "pass789",
+			"permissions": []interface{}{"read", "write"},
+			"active":      true,
+		},
+	}
+	testData.SetByPath("users", NewJSON(usersMap))
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
@@ -186,12 +209,15 @@ func BenchmarkCloneFast(b *testing.B) {
 }
 
 /*
-➜  easyjson git:(bench-clone) ✗ go test -bench=BenchmarkClone -benchtime=1000000x -benchmem
+➜  easyjson git:(bench-clone) go test -cpu=1,2,4,8 -bench=BenchmarkClone -benchtime=1000000x -benchmem
 goos: linux
 goarch: amd64
 pkg: github.com/foliagecp/easyjson
 cpu: AMD Ryzen 5 5600X 6-Core Processor
-BenchmarkCloneFast-12            1000000              4331 ns/op            2633 B/op         58 allocs/op
+BenchmarkCloneFast       1000000             11224 ns/op            5768 B/op        130 allocs/op
+BenchmarkCloneFast-2     1000000              9449 ns/op            5768 B/op        130 allocs/op
+BenchmarkCloneFast-4     1000000              9908 ns/op            5770 B/op        130 allocs/op
+BenchmarkCloneFast-8     1000000              9903 ns/op            5771 B/op        130 allocs/op
 PASS
-ok      github.com/foliagecp/easyjson   4.336s
+ok      github.com/foliagecp/easyjson   40.490s
 */
