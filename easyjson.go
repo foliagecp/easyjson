@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"reflect"
 	"strconv"
-	"strings"
 )
 
 // JSON represents a JSON value that can be manipulated using path-based operations.
@@ -108,96 +107,98 @@ func (j1 JSON) Equals(j2 JSON) bool {
 	return reflect.DeepEqual(j1.Value, j2.Value)
 }
 
-// PathExists checks if a path exists in the JSON structure.
-// Path can use custom delimiter (default is ".").
-func (j JSON) PathExists(p string, delimiter ...string) bool {
-	delim := "."
-	if len(delimiter) > 0 {
-		delim = delimiter[0]
-	}
-	path := strings.Split(p, delim)
-	if len(path) > 0 && len(path[0]) > 0 { // Not an empty path
-		switch j.Value.(type) {
-		case map[string]interface{}: // JSON object
-			jObj := j.Value.(map[string]interface{})
-			if jvRes, ok := jObj[path[0]]; ok {
-				jRes := NewJSON(jvRes)
-				if len(path) == 1 {
-					return true
-				} else { // More than one key in path (recursive call is only possible when there is a path's tail)
-					return jRes.PathExists(strings.Join(path[1:], delim))
-				}
-			} else {
-				return false
-			}
-		case []interface{}: // JSON array
-			jArr := j.Value.([]interface{})
-			if arrayId, err := strconv.Atoi(path[0]); err == nil {
-				if 0 <= arrayId && arrayId < len(jArr) {
-					if jvRes := jArr[arrayId]; jvRes != nil {
-						jRes := NewJSON(jvRes)
-						if len(path) == 1 {
-							return true
-						} else { // More than one key in path (recursive call is only possible when there is a path's tail)
-							return jRes.PathExists(strings.Join(path[1:], delim))
-						}
-					}
-				}
-			}
-			return false
-		default: // Not JSON obejct
-			return false
-		}
-	} else { // Empty path can come only from the very first call
-		return true // No path, so.. nothing exists in JSON
-	}
+type pathIter struct {
+	s     string
+	i     int
+	delim byte
 }
 
-// GetByPath retrieves a value from JSON using dot-notation path.
-// Returns NewJSONNull() if path doesn't exist.
-func (j JSON) GetByPath(p string, delimiter ...string) JSON {
-	delim := "."
-	if len(delimiter) > 0 {
-		delim = delimiter[0]
+func (it *pathIter) next() (tok string, ok bool) {
+	if it.i >= len(it.s) {
+		return "", false
 	}
-	path := strings.Split(p, delim)
-	if len(path) > 0 && len(path[0]) > 0 { // Not an empty path
-		switch j.Value.(type) {
-		case map[string]interface{}: // JSON object
-			jObj := j.Value.(map[string]interface{})
-			if jvRes, ok := jObj[path[0]]; ok {
-				jRes := NewJSON(jvRes)
-				if len(path) == 1 {
-					return jRes
-				} else { // More than one key in path (recursive call is only possible when there is a path's tail)
-					return jRes.GetByPath(strings.Join(path[1:], delim))
-				}
-			} else {
-				//fmt.Printf(`Key "%s" does not exist in JSON object: %s`+"\n", path[0], j.ToString())
+	j := it.i
+	for j < len(it.s) && it.s[j] != it.delim {
+		j++
+	}
+	tok = it.s[it.i:j]
+	it.i = j
+	if it.i < len(it.s) && it.s[it.i] == it.delim {
+		it.i++
+	}
+	return tok, true
+}
+
+func (j JSON) PathExists(p string, delimiter ...string) bool {
+	delim := byte('.')
+	if len(delimiter) > 0 && len(delimiter[0]) > 0 {
+		delim = delimiter[0][0]
+	}
+	if p == "" {
+		return true
+	}
+
+	cur := j.Value
+	it := pathIter{s: p, i: 0, delim: delim}
+	for {
+		tok, ok := it.next()
+		if !ok || tok == "" {
+			break
+		}
+		switch v := cur.(type) {
+		case map[string]interface{}:
+			nv, ok := v[tok]
+			if !ok {
+				return false
+			}
+			cur = nv
+		case []interface{}:
+			idx, err := strconv.Atoi(tok)
+			if err != nil || idx < 0 || idx >= len(v) {
+				return false
+			}
+			cur = v[idx]
+		default:
+			return false
+		}
+	}
+	return true
+}
+
+func (j JSON) GetByPath(p string, delimiter ...string) JSON {
+	delim := byte('.')
+	if len(delimiter) > 0 && len(delimiter[0]) > 0 {
+		delim = delimiter[0][0]
+	}
+	if p == "" {
+		return j
+	}
+
+	cur := j.Value
+	it := pathIter{s: p, i: 0, delim: delim}
+	for {
+		tok, ok := it.next()
+		if !ok || tok == "" {
+			break
+		}
+		switch v := cur.(type) {
+		case map[string]interface{}:
+			nv, ok := v[tok]
+			if !ok {
 				return NewJSONNull()
 			}
-		case []interface{}: // JSON array
-			jArr := j.Value.([]interface{})
-			if arrayId, err := strconv.Atoi(path[0]); err == nil {
-				if 0 <= arrayId && arrayId < len(jArr) {
-					if jvRes := jArr[arrayId]; jvRes != nil {
-						jRes := NewJSON(jvRes)
-						if len(path) == 1 {
-							return jRes
-						} else { // More than one key in path (recursive call is only possible when there is a path's tail)
-							return jRes.GetByPath(strings.Join(path[1:], delim))
-						}
-					}
-				}
+			cur = nv
+		case []interface{}:
+			idx, err := strconv.Atoi(tok)
+			if err != nil || idx < 0 || idx >= len(v) {
+				return NewJSONNull()
 			}
-			return NewJSONNull()
-		default: // Not JSON obejct
-			//fmt.Printf(`Path "%s" tries to accesss not a JSON object's element in object %s`+"\n", p, j.ToString())
+			cur = v[idx]
+		default:
 			return NewJSONNull()
 		}
-	} else { // Empty path can come only from the very first call
-		return j // No path, so.. return current JSON
 	}
+	return NewJSON(cur)
 }
 
 // GetByPathPtr returns a pointer to the JSON value at the specified path.
@@ -211,130 +212,182 @@ func (j JSON) GetPtr() *JSON {
 	return &j
 }
 
-func jvSetValueByPath(parent *interface{}, parentKeyOrIdForThisValue string, jv *interface{}, p string, v *interface{}, delimiter string) bool {
-	path := strings.Split(p, delimiter)
-	if len(path) > 0 && len(path[0]) > 0 { // Not an empty path
-		switch (*jv).(type) {
-		case map[string]interface{}: // JSON object
-			jObj := (*jv).(map[string]interface{})
-			if len(path) == 1 {
-				jObj[path[0]] = *v // Set value anyway (whether key exists on not)
-				return true
-			} else { // More than one key in path (recursive call is only possible when there is a path's tail)
-				jvRes, ok := jObj[path[0]]
-				if !ok {
-					jObj[path[0]] = map[string]interface{}{}
-					jvRes = jObj[path[0]]
-				}
-				return jvSetValueByPath(jv, path[0], &jvRes, strings.Join(path[1:], delimiter), v, delimiter)
-			}
-		case []interface{}: // JSON array
-			jArr := (*jv).([]interface{})
-			if arrayId, err := strconv.Atoi(path[0]); err == nil {
-				if 0 <= arrayId && arrayId < len(jArr) { // Array has a place for element
-					if len(path) == 1 {
-						jArr[arrayId] = *v
-						return true
-					} else { // More than one key in path (recursive call is only possible when there is a path's tail)
-						jvRes := jArr[arrayId]
-						return jvSetValueByPath(jv, path[0], &jvRes, strings.Join(path[1:], delimiter), v, delimiter)
-					}
-				} else { // Array has no place for element
-					if len(path) == 1 {
-						if arrayId < 0 {
-							jvAddValueToArray(&jArr, *v)
-						} else {
-							jvSetArrayValue(&jArr, arrayId, *v)
-						}
-						*jv = jArr
-						return jvSetValueByPath(nil, "", parent, parentKeyOrIdForThisValue, jv, delimiter)
-					}
-				}
-			}
-			return false
-		default: // Not JSON obejct
-			//fmt.Printf(`Path "%s" tries to accesss not a JSON object's element in object %s`+"\n", p, j.ToString())
-			return false
-		}
-	} else { // Empty path can come only from the very first call
-		return false // No path, so.. return false
+func nextPathToken(p string, i int, delim byte) (tok string, next int, ok bool) {
+	if i >= len(p) {
+		return "", i, false
 	}
+	j := i
+	for j < len(p) && p[j] != delim {
+		j++
+	}
+	tok = p[i:j]
+	if j < len(p) && p[j] == delim {
+		return tok, j + 1, true
+	}
+	return tok, j, true
 }
 
-func jvDeepMerge(jv1 *interface{}, jv2 *interface{}) {
-	switch (*jv1).(type) {
-	case map[string]interface{}: // JSON object
-		jObj1 := (*jv1).(map[string]interface{})
-		if jObj2, ok := (*jv2).(map[string]interface{}); ok {
-			for k2, v2 := range jObj2 {
-				if v1, exists := jObj1[k2]; exists {
-					jvDeepMerge(&v1, &v2)
-					jObj1[k2] = v1
-				} else {
-					jObj1[k2] = v2
-				}
-			}
-		}
-	case []interface{}: // JSON array
-		jArr1 := (*jv1).([]interface{})
-		if jArr2, ok := (*jv2).([]interface{}); ok {
-			for _, v2 := range jArr2 {
-				unique := true
-				for _, v1 := range jArr1 {
-					if NewJSON(v2).Equals(NewJSON(v1)) {
-						unique = false
-					}
-				}
-				if unique {
-					jvAddValueToArray(&jArr1, v2)
-					*jv1 = jArr1
-				}
-			}
-		}
-	default: // Not JSON obejct and not JSON array - mere type
-		*jv1 = *jv2
+func jvSetValueByPath(parent *interface{}, parentKeyOrIdForThisValue string, jv *interface{}, p string, v *interface{}, delimiter string) bool {
+	delim := byte('.')
+	if delimiter != "" {
+		delim = delimiter[0]
 	}
+
+	var set func(cur interface{}, pos int) (interface{}, bool)
+	set = func(cur interface{}, pos int) (interface{}, bool) {
+		tok, next, ok := nextPathToken(p, pos, delim)
+		if !ok || tok == "" {
+			return nil, false
+		}
+		last := next >= len(p)
+
+		switch cv := cur.(type) {
+
+		case map[string]interface{}:
+			if last {
+				cv[tok] = *v
+				return cv, true
+			}
+			child, exists := cv[tok]
+			if !exists || child == nil {
+				if ntok, _, ok2 := nextPathToken(p, next, delim); ok2 {
+					if ntok == "-1" {
+						cv[tok] = []interface{}{}
+					} else if _, err := strconv.Atoi(ntok); err == nil {
+						cv[tok] = []interface{}{}
+					} else {
+						cv[tok] = map[string]interface{}{}
+					}
+				} else {
+					cv[tok] = map[string]interface{}{}
+				}
+				child = cv[tok]
+			}
+			newChild, ok := set(child, next)
+			if !ok {
+				return cur, false
+			}
+			cv[tok] = newChild
+			return cv, true
+
+		case []interface{}:
+			id, err := strconv.Atoi(tok)
+			if err != nil {
+				return cur, false
+			}
+			if last {
+				if id < 0 {
+					cv = append(cv, *v)
+				} else {
+					jvSetArrayValue(&cv, id, *v)
+				}
+				return cv, true
+			}
+			if id < 0 || id >= len(cv) {
+				return cur, false
+			}
+			newChild, ok := set(cv[id], next)
+			if !ok {
+				return cur, false
+			}
+			cv[id] = newChild
+			return cv, true
+
+		default:
+			return cur, false
+		}
+	}
+
+	newRoot, ok := set(*jv, 0)
+	if !ok {
+		return false
+	}
+	*jv = newRoot
+	return true
 }
 
 func jvRemoveValueByPath(jv *interface{}, p string, delimiter string) bool {
-	path := strings.Split(p, delimiter)
-	if len(path) > 0 && len(path[0]) > 0 { // Not an empty path
-		switch (*jv).(type) {
-		case map[string]interface{}: // JSON object
-			jObj := (*jv).(map[string]interface{})
-			if jRes, keyExists := jObj[path[0]]; true {
-				if len(path) == 1 { // Last key in the path
-					delete(jObj, path[0]) // Remove key anyway (whether key exists on not)
-					return true
-				} else { // More than one key in path (recursive call is only possible when there is a path's tail)
-					if !keyExists { // Return true cause nothing to remove
-						return true
-					}
-					return jvRemoveValueByPath(&jRes, strings.Join(path[1:], delimiter), delimiter)
-				}
+	delim := byte('.')
+	if delimiter != "" {
+		delim = delimiter[0]
+	}
+	var rm func(cur *interface{}, idx int) bool
+	rm = func(cur *interface{}, idx int) bool {
+		tok, next, ok := nextPathToken(p, idx, delim)
+		if !ok || tok == "" {
+			*cur = nil
+			return true
+		}
+		last := next >= len(p)
+		switch cv := (*cur).(type) {
+		case map[string]interface{}:
+			if last {
+				delete(cv, tok)
+				return true
 			}
-		case []interface{}: // JSON array
-			jArr := (*jv).([]interface{})
-			if arrayId, err := strconv.Atoi(path[0]); err == nil {
-				if 0 <= arrayId && arrayId < len(jArr) { // Array has a place for element
-					if len(path) == 1 {
-						jArr[arrayId] = nil
-						return true
-					} else { // More than one key in path (recursive call is only possible when there is a path's tail)
-						return jvRemoveValueByPath(&jArr[arrayId], strings.Join(path[1:], delimiter), delimiter)
-					}
-				}
+			nxt, ok := cv[tok]
+			if !ok {
+				return true
 			}
-			return false
-		default: // Not JSON obejct
-			//fmt.Printf(`Path "%s" tries to accesss not a JSON object's element in object %s`+"\n", p, jvValueToString(jv))
+			return rm(&nxt, next)
+		case []interface{}:
+			id, err := strconv.Atoi(tok)
+			if err != nil || id < 0 || id >= len(cv) {
+				return false
+			}
+			if last {
+				cv[id] = nil
+				return true
+			}
+			return rm(&cv[id], next)
+		default:
 			return false
 		}
-	} else { // More than one key in path (recursive call is only possible when there is a path's tail)
-		*jv = nil // No path, so.. this can be only interpreted as setting current json value to nil
-		return true
 	}
-	return false
+	return rm(jv, 0)
+}
+
+func jvDeepMerge(jv1 *interface{}, jv2 *interface{}) {
+	switch x1 := (*jv1).(type) {
+	case map[string]interface{}:
+		if x2, ok := (*jv2).(map[string]interface{}); ok {
+			for k2, v2 := range x2 {
+				if v1, exists := x1[k2]; exists {
+					jvDeepMerge(&v1, &v2)
+					x1[k2] = v1
+				} else {
+					x1[k2] = v2
+				}
+			}
+		}
+	case []interface{}:
+		if x2, ok := (*jv2).([]interface{}); ok {
+			a1 := x1
+
+			for _, v2 := range x2 {
+				if v2 == nil {
+					continue
+				}
+				dup := false
+				for _, v1 := range a1 {
+					if v1 == nil {
+						continue
+					}
+					if reflect.DeepEqual(v1, v2) {
+						dup = true
+						break
+					}
+				}
+				if !dup {
+					a1 = append(a1, v2)
+				}
+			}
+
+			*jv1 = a1
+		}
+	default:
+		*jv1 = *jv2
+	}
 }
 
 func jvAddValueToArray(jArray *[]interface{}, v interface{}) bool {
@@ -395,10 +448,28 @@ func jvValueToString(jv interface{}) string {
 	return string(jvValueToBytes(jv))
 }
 
+func deepCopy(v interface{}) interface{} {
+	switch x := v.(type) {
+	case map[string]interface{}:
+		m := make(map[string]interface{}, len(x))
+		for k, vv := range x {
+			m[k] = deepCopy(vv)
+		}
+		return m
+	case []interface{}:
+		s := make([]interface{}, len(x))
+		for i, vv := range x {
+			s[i] = deepCopy(vv)
+		}
+		return s
+	default:
+		return x
+	}
+}
+
 // Clone creates a deep copy of the JSON value.
 func (j JSON) Clone() JSON {
-	json, _ := JSONFromString(j.ToString())
-	return json
+	return NewJSON(deepCopy(j.Value))
 }
 
 // ToBytes converts the JSON value to byte slice.
@@ -460,21 +531,20 @@ func (j JSON) AsArray() ([]interface{}, bool) {
 
 // AsArrayString returns the JSON array as a string slice if all elements are strings.
 func (j JSON) AsArrayString() ([]string, bool) {
-	if array, ok := j.AsArray(); ok {
-		strArray := make([]string, len(array))
-		allString := true
-		for i, v := range array {
-			if vStr, ok := v.(string); ok {
-				strArray[i] = vStr
-			} else {
-				allString = false
-			}
-		}
-		if allString {
-			return strArray, allString
+	array, ok := j.AsArray()
+	if !ok {
+		return nil, false
+	}
+	for _, v := range array {
+		if _, ok := v.(string); !ok {
+			return nil, false
 		}
 	}
-	return make([]string, 0), false
+	out := make([]string, len(array))
+	for i, v := range array {
+		out[i] = v.(string)
+	}
+	return out, true
 }
 
 // AddToArray adds an element to the JSON array.
@@ -622,8 +692,6 @@ func JSONFromBytes(b []byte) (JSON, bool) {
 
 // JSONFromString creates a JSON instance from string by parsing it as JSON.
 func JSONFromString(s string) (JSON, bool) {
-	s = strings.Replace(s, "\n", "", -1)
-	s = strings.Replace(s, "\t", "", -1)
 	return JSONFromBytes([]byte(s))
 }
 
