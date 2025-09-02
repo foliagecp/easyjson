@@ -4,6 +4,16 @@ import (
 	"testing"
 )
 
+func TestReproduce_ArrayWithHoles(t *testing.T) {
+	j := NewJSONObject()
+	ok := j.SetByPath("1:3:6:1:2:1:17:1:4:1:2.3", NewJSON(79))
+	if !ok {
+		t.Fatalf("SetByPath failed")
+	}
+	got := j.ToString()
+	t.Log(got)
+}
+
 func TestNewJSONObjectFromMap(t *testing.T) {
 	data := map[string]interface{}{
 		"name":        "test",

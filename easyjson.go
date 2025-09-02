@@ -233,6 +233,7 @@ func jvSetValueByPath(parent *interface{}, parentKeyOrIdForThisValue string, jv 
 		delim = delimiter[0]
 	}
 
+	// Recursive setter: walks the path and sets value, creating intermediate nodes.
 	var set func(cur interface{}, pos int) (interface{}, bool)
 	set = func(cur interface{}, pos int) (interface{}, bool) {
 		tok, next, ok := nextPathToken(p, pos, delim)
@@ -244,23 +245,15 @@ func jvSetValueByPath(parent *interface{}, parentKeyOrIdForThisValue string, jv 
 		switch cv := cur.(type) {
 
 		case map[string]interface{}:
+			// Object case: always create missing children as objects (STRICT MODE).
 			if last {
 				cv[tok] = *v
 				return cv, true
 			}
 			child, exists := cv[tok]
 			if !exists || child == nil {
-				if ntok, _, ok2 := nextPathToken(p, next, delim); ok2 {
-					if ntok == "-1" {
-						cv[tok] = []interface{}{}
-					} else if _, err := strconv.Atoi(ntok); err == nil {
-						cv[tok] = []interface{}{}
-					} else {
-						cv[tok] = map[string]interface{}{}
-					}
-				} else {
-					cv[tok] = map[string]interface{}{}
-				}
+				// <<< FIX: no look-ahead to decide []interface{} by numeric token >>>
+				cv[tok] = map[string]interface{}{}
 				child = cv[tok]
 			}
 			newChild, ok := set(child, next)
@@ -271,6 +264,7 @@ func jvSetValueByPath(parent *interface{}, parentKeyOrIdForThisValue string, jv 
 			return cv, true
 
 		case []interface{}:
+			// Array case: indices must be numeric; negative index means push (last token only).
 			id, err := strconv.Atoi(tok)
 			if err != nil {
 				return cur, false
@@ -294,6 +288,7 @@ func jvSetValueByPath(parent *interface{}, parentKeyOrIdForThisValue string, jv 
 			return cv, true
 
 		default:
+			// Neither object nor array — cannot traverse further.
 			return cur, false
 		}
 	}
