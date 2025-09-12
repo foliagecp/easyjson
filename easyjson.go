@@ -6,7 +6,9 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"reflect"
+	"sort"
 	"strconv"
+	"strings"
 )
 
 // JSON represents a JSON value that can be manipulated using path-based operations.
@@ -459,6 +461,128 @@ func deepCopy(v interface{}) interface{} {
 		return s
 	default:
 		return x
+	}
+}
+
+// Normalize converts JSON to a canonical form:
+// - all numbers -> float64
+// - arrays are sorted deterministically by the canonical string of elements
+// - objects are normalized recursively (for the string canon, keys are sorted)
+func (j *JSON) Normalize() {
+	j.Value = normalizeValue(j.Value)
+}
+
+// (optional) Returns a clone in canonical form.
+func (j JSON) NormalizedClone() JSON {
+	c := j.Clone()
+	c.Normalize()
+	return c
+}
+
+// normalizeValue — recursive normalization of a node.
+func normalizeValue(v interface{}) interface{} {
+	switch x := v.(type) {
+	case map[string]interface{}:
+		m := make(map[string]interface{}, len(x))
+		for k, vv := range x {
+			m[k] = normalizeValue(vv)
+		}
+		return m
+
+	case []interface{}:
+		arr := make([]interface{}, 0, len(x))
+		for _, e := range x {
+			arr = append(arr, normalizeValue(e))
+		}
+		// deterministic array sort by each element's canonical string
+		sort.SliceStable(arr, func(i, j int) bool {
+			return canonicalString(arr[i]) < canonicalString(arr[j])
+		})
+		return arr
+
+	case float64:
+		return x
+	case float32:
+		return float64(x)
+	case int:
+		return float64(x)
+	case int8:
+		return float64(x)
+	case int16:
+		return float64(x)
+	case int32:
+		return float64(x)
+	case int64:
+		return float64(x)
+	case uint:
+		return float64(x)
+	case uint8:
+		return float64(x)
+	case uint16:
+		return float64(x)
+	case uint32:
+		return float64(x)
+	case uint64:
+		return float64(x)
+	case json.Number:
+		if f, err := x.Float64(); err == nil {
+			return f
+		}
+		// if parsing fails, keep it as a string
+		return x.String()
+	default:
+		return x
+	}
+}
+
+// canonicalString — deterministic JSON string used for comparison/sorting.
+// Objects are serialized with sorted keys; arrays are assumed already normalized.
+func canonicalString(v interface{}) string {
+	switch x := v.(type) {
+	case nil:
+		return "null"
+	case bool:
+		if x {
+			return "true"
+		}
+		return "false"
+	case float64, string:
+		b, _ := json.Marshal(x)
+		return string(b)
+	case []interface{}:
+		var b strings.Builder
+		b.WriteByte('[')
+		for i, e := range x {
+			if i > 0 {
+				b.WriteByte(',')
+			}
+			b.WriteString(canonicalString(e))
+		}
+		b.WriteByte(']')
+		return b.String()
+	case map[string]interface{}:
+		keys := make([]string, 0, len(x))
+		for k := range x {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		var b strings.Builder
+		b.WriteByte('{')
+		for i, k := range keys {
+			if i > 0 {
+				b.WriteByte(',')
+			}
+			kq, _ := json.Marshal(k)
+			b.Write(kq)
+			b.WriteByte(':')
+			b.WriteString(canonicalString(x[k]))
+		}
+		b.WriteByte('}')
+		return b.String()
+	default:
+		// fallback: for uncommon types, rely on json.Marshal
+		b, _ := json.Marshal(x)
+		return string(b)
 	}
 }
 
