@@ -5,6 +5,7 @@ package easyjson
 import (
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"reflect"
 	"sort"
 	"strconv"
@@ -14,6 +15,18 @@ import (
 // JSON represents a JSON value that can be manipulated using path-based operations.
 type JSON struct {
 	Value interface{}
+}
+
+func structToMap(v interface{}) (map[string]interface{}, bool) {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return nil, false
+	}
+	var m map[string]interface{}
+	if err := json.Unmarshal(b, &m); err != nil {
+		return nil, false
+	}
+	return m, true
 }
 
 // NewJSON creates a new JSON instance from any Go value.
@@ -31,6 +44,24 @@ func NewJSON(value interface{}) JSON {
 			result[i] = val.Index(i).Interface()
 		}
 		return JSON{Value: result}
+	}
+	if typ.Kind() == reflect.Map && (typ.Key().Kind() != reflect.String || typ.Elem().Kind() != reflect.Interface) {
+		length := val.Len()
+		result := make(map[string]interface{}, length)
+
+		iter := val.MapRange()
+		for iter.Next() {
+			k := iter.Key().String()
+			val := iter.Value().Interface()
+			result[k] = val
+		}
+		return JSON{Value: result}
+	}
+	if typ.Kind() == reflect.Struct {
+		if m, ok := structToMap(value); ok {
+			return JSON{Value: m}
+		}
+		return JSON{Value: value}
 	}
 
 	return JSON{Value: value}
@@ -482,6 +513,7 @@ func (j JSON) NormalizedClone() JSON {
 // normalizeValue — recursive normalization of a node.
 func normalizeValue(v interface{}) interface{} {
 	switch x := v.(type) {
+
 	case map[string]interface{}:
 		m := make(map[string]interface{}, len(x))
 		for k, vv := range x {
@@ -499,6 +531,9 @@ func normalizeValue(v interface{}) interface{} {
 			return canonicalString(arr[i]) < canonicalString(arr[j])
 		})
 		return arr
+
+	case []byte:
+		return x
 
 	case float64:
 		return x
@@ -528,10 +563,59 @@ func normalizeValue(v interface{}) interface{} {
 		if f, err := x.Float64(); err == nil {
 			return f
 		}
-		// if parsing fails, keep it as a string
 		return x.String()
-	default:
+
+	case string:
 		return x
+	case bool:
+		return x
+	case nil:
+		return nil
+
+	default:
+		rv := reflect.ValueOf(v)
+		switch rv.Kind() {
+
+		case reflect.Slice, reflect.Array:
+			n := rv.Len()
+			arr := make([]interface{}, 0, n)
+			for i := 0; i < n; i++ {
+				elem := rv.Index(i).Interface()
+				arr = append(arr, normalizeValue(elem))
+			}
+			sort.SliceStable(arr, func(i, j int) bool {
+				return canonicalString(arr[i]) < canonicalString(arr[j])
+			})
+			return arr
+
+		case reflect.Map:
+			m := make(map[string]interface{}, rv.Len())
+			iter := rv.MapRange()
+			for iter.Next() {
+				k := iter.Key()
+
+				var ks string
+				switch k.Kind() {
+				case reflect.String:
+					ks = k.String()
+				case reflect.Bool:
+					ks = strconv.FormatBool(k.Bool())
+				case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+					ks = strconv.FormatInt(k.Int(), 10)
+				case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
+					ks = strconv.FormatUint(k.Uint(), 10)
+				case reflect.Float32, reflect.Float64:
+					ks = strconv.FormatFloat(k.Float(), 'g', -1, 64)
+				default:
+					ks = fmt.Sprint(k.Interface())
+				}
+
+				val := iter.Value().Interface()
+				m[ks] = normalizeValue(val)
+			}
+			return m
+		}
+		return v
 	}
 }
 
