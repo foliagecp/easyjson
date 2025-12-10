@@ -36,7 +36,15 @@ func NewJSON(value interface{}) JSON {
 	}
 
 	val := reflect.ValueOf(value)
-	typ := reflect.TypeOf(value)
+
+	for val.Kind() == reflect.Ptr {
+		if val.IsNil() {
+			return JSON{Value: nil}
+		}
+		val = val.Elem()
+	}
+
+	typ := val.Type()
 	if typ.Kind() == reflect.Slice && typ.Elem().Kind() != reflect.Interface {
 		length := val.Len()
 		result := make([]interface{}, length)
