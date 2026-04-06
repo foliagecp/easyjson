@@ -868,6 +868,38 @@ func (j JSON) AsBool() (bool, bool) {
 	}
 }
 
+// AsInt64 returns the JSON value as an int64 without precision loss through float64.
+func (j JSON) AsInt64() (int64, bool) {
+	switch v := j.Value.(type) {
+	case int64:
+		return v, true
+	case int:
+		return int64(v), true
+	case uint:
+		return int64(v), true
+	case uint32:
+		return int64(v), true
+	case uint64:
+		return int64(v), true
+	case byte:
+		return int64(v), true
+	case float64:
+		return int64(v), true
+	case float32:
+		return int64(v), true
+	default:
+		return 0, false
+	}
+}
+
+// AsInt64Default returns the JSON value as int64 or defaultValue if not numeric.
+func (j JSON) AsInt64Default(defaultValue int64) int64 {
+	if v, ok := j.AsInt64(); ok {
+		return v
+	}
+	return defaultValue
+}
+
 // AsNumericDefault returns the JSON value as float64 or defaultValue if not numeric.
 func (j JSON) AsNumericDefault(defaultValue float64) float64 {
 	if v, ok := j.AsNumeric(); ok {

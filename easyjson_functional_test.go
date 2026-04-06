@@ -322,3 +322,79 @@ func TestBuildArrayFromSlice(t *testing.T) {
 		}
 	}
 }
+
+func TestAsInt64(t *testing.T) {
+	// int64 value that loses precision through float64
+	big := int64(1<<53 + 1) // 9007199254740993
+	j := NewJSON(big)
+
+	got, ok := j.AsInt64()
+	if !ok {
+		t.Fatalf("AsInt64 returned ok=false for int64 value")
+	}
+	if got != big {
+		t.Fatalf("AsInt64 precision loss: expected %d, got %d", big, got)
+	}
+
+	// AsNumeric loses precision for this value
+	f, _ := j.AsNumeric()
+	if int64(f) == big {
+		t.Fatalf("expected float64 to lose precision for 2^53+1, but it didn't")
+	}
+
+	// Test with other numeric types
+	tests := []struct {
+		name string
+		val  interface{}
+		want int64
+	}{
+		{"int", int(42), 42},
+		{"uint", uint(100), 100},
+		{"uint32", uint32(200), 200},
+		{"uint64", uint64(300), 300},
+		{"byte", byte(7), 7},
+		{"float64", float64(99), 99},
+		{"float32", float32(50), 50},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			j := NewJSON(tt.val)
+			got, ok := j.AsInt64()
+			if !ok {
+				t.Fatalf("AsInt64 returned ok=false for %T", tt.val)
+			}
+			if got != tt.want {
+				t.Fatalf("expected %d, got %d", tt.want, got)
+			}
+		})
+	}
+
+	// Non-numeric should return false
+	if _, ok := NewJSON("hello").AsInt64(); ok {
+		t.Fatalf("AsInt64 should return false for string")
+	}
+}
+
+func TestAsInt64Default(t *testing.T) {
+	j := NewJSON(int64(42))
+	if got := j.AsInt64Default(0); got != 42 {
+		t.Fatalf("expected 42, got %d", got)
+	}
+	if got := NewJSON("x").AsInt64Default(-1); got != -1 {
+		t.Fatalf("expected default -1, got %d", got)
+	}
+}
+
+func TestAsInt64_SetByPath(t *testing.T) {
+	big := int64(1<<53 + 1)
+	j := NewJSONObject()
+	j.SetByPath("op.time", NewJSON(big))
+
+	got, ok := j.GetByPath("op.time").AsInt64()
+	if !ok {
+		t.Fatalf("AsInt64 returned false after SetByPath")
+	}
+	if got != big {
+		t.Fatalf("precision loss after SetByPath: expected %d, got %d", big, got)
+	}
+}
