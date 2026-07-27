@@ -64,9 +64,16 @@ func TestPath_CustomDelimiter(t *testing.T) {
 	}
 }
 
+// SetByPath never creates arrays implicitly: a numeric path segment under a
+// missing key produces an object with that key, not an array (see
+// TestSetByPath_NumericSegmentDoesNotCreateArray). Arrays must be created
+// explicitly, after which numeric indexing and push work as expected.
 func TestSetByPath_ArrayIndexingAndPush(t *testing.T) {
 	j := NewJSONObject()
 
+	if !j.SetByPath("arr", NewJSONArray()) {
+		t.Fatalf("SetByPath arr = [] failed")
+	}
 	if !j.SetByPath("arr.2", NewJSON("bar")) {
 		t.Fatalf("SetByPath arr.2 failed")
 	}
@@ -98,12 +105,37 @@ func TestSetByPath_ArrayIndexingAndPush(t *testing.T) {
 	}
 }
 
-func TestRemoveByPath_ObjectAndArray(t *testing.T) {
+// Numeric path segments are plain object keys, not array indices. Auto-creating
+// arrays from them used to blow up on paths that merely look numeric (e.g. SNMP
+// OIDs like "1:3:6:1:2:1:17:1:4:1:2.3"), producing huge sparse arrays.
+func TestSetByPath_NumericSegmentDoesNotCreateArray(t *testing.T) {
+	j := NewJSONObject()
+	if !j.SetByPath("arr.2", NewJSON("bar")) {
+		t.Fatalf("SetByPath arr.2 failed")
+	}
+
+	arr := j.GetByPath("arr")
+	if arr.IsArray() {
+		t.Fatalf("arr must not be auto-created as array")
+	}
+	if !arr.IsObject() {
+		t.Fatalf("arr should be object, got %T", arr.Value)
+	}
+	if s, ok := j.GetByPath("arr.2").AsString(); !ok || s != "bar" {
+		t.Fatalf("expected bar at arr.2, got %q", s)
+	}
+	if keys := arr.ObjectKeys(); len(keys) != 1 || keys[0] != "2" {
+		t.Fatalf("expected single key \"2\", got %v", keys)
+	}
+}
+
+func TestRemoveByPath_Object(t *testing.T) {
 	j := NewJSONObject()
 	j.SetByPath("a.b.c", NewJSON(1))
 	j.SetByPath("a.b.d", NewJSON(2))
-	j.SetByPath("arr.0", NewJSON("x"))
-	j.SetByPath("arr.1", NewJSON("y"))
+	// Numeric segments are object keys, so this is an object, not an array.
+	j.SetByPath("numkeys.0", NewJSON("x"))
+	j.SetByPath("numkeys.1", NewJSON("y"))
 
 	if !j.RemoveByPath("a.b.c") {
 		t.Fatalf("RemoveByPath a.b.c failed")
@@ -111,9 +143,33 @@ func TestRemoveByPath_ObjectAndArray(t *testing.T) {
 	if j.PathExists("a.b.c") {
 		t.Fatalf("a.b.c should be removed")
 	}
+	if j.GetByPath("a.b.d").AsNumericDefault(-1) != 2 {
+		t.Fatalf("sibling a.b.d should survive removal")
+	}
+
+	if !j.RemoveByPath("numkeys.0") {
+		t.Fatalf("RemoveByPath numkeys.0 failed")
+	}
+	if j.PathExists("numkeys.0") {
+		t.Fatalf("numkeys.0 should be removed")
+	}
+	if s, ok := j.GetByPath("numkeys.1").AsString(); !ok || s != "y" {
+		t.Fatalf("expected y at numkeys.1, got %q", s)
+	}
+}
+
+// Removing an array element clears the slot in place — the array keeps its
+// length instead of shifting the tail, so indices of the remaining elements
+// stay stable.
+func TestRemoveByPath_Array(t *testing.T) {
+	j := NewJSONObject()
+	j.SetByPath("arr", NewJSON([]string{"x", "y", "z"}))
 
 	if !j.RemoveByPath("arr.0") {
 		t.Fatalf("RemoveByPath arr.0 failed")
+	}
+	if sz := j.GetByPath("arr").ArraySize(); sz != 3 {
+		t.Fatalf("array must keep its length after remove, got %d", sz)
 	}
 	if v := j.GetByPath("arr.0"); !v.IsNull() {
 		t.Fatalf("expected nil at arr.0 after remove, got %v", v.Value)
@@ -121,18 +177,43 @@ func TestRemoveByPath_ObjectAndArray(t *testing.T) {
 	if s, ok := j.GetByPath("arr.1").AsString(); !ok || s != "y" {
 		t.Fatalf("expected y at arr.1, got %q", s)
 	}
+	if s, ok := j.GetByPath("arr.2").AsString(); !ok || s != "z" {
+		t.Fatalf("expected z at arr.2, got %q", s)
+	}
+
+	// Removal inside an element keeps the element itself.
+	j.SetByPath("arr.2", NewJSONObject())
+	j.SetByPath("arr.2.k", NewJSON("v"))
+	if !j.RemoveByPath("arr.2.k") {
+		t.Fatalf("RemoveByPath arr.2.k failed")
+	}
+	if j.PathExists("arr.2.k") {
+		t.Fatalf("arr.2.k should be removed")
+	}
+	if !j.GetByPath("arr.2").IsObject() {
+		t.Fatalf("arr.2 should still be an object")
+	}
+
+	// Out-of-range and non-numeric indices are rejected.
+	if j.RemoveByPath("arr.9") {
+		t.Fatalf("RemoveByPath on out-of-range index should fail")
+	}
+	if j.RemoveByPath("arr.foo") {
+		t.Fatalf("RemoveByPath on non-numeric index should fail")
+	}
+	if sz := j.GetByPath("arr").ArraySize(); sz != 3 {
+		t.Fatalf("failed removals must not modify the array, got size %d", sz)
+	}
 }
 
 func TestDeepMerge(t *testing.T) {
 	a := NewJSONObject()
 	a.SetByPath("obj.x", NewJSON(1))
-	a.SetByPath("arr.0", NewJSON(1))
-	a.SetByPath("arr.1", NewJSON(2))
+	a.SetByPath("arr", NewJSON([]int{1, 2}))
 
 	b := NewJSONObject()
 	b.SetByPath("obj.y", NewJSON(2))
-	b.SetByPath("arr.0", NewJSON(2))
-	b.SetByPath("arr.2", NewJSON(3))
+	b.SetByPath("arr", NewJSON([]int{2, 3}))
 
 	a.DeepMerge(b)
 

@@ -151,12 +151,23 @@ obj1.DeepMerge(obj2) // recursively merges obj2 into obj1
 
 ### Comparing and Normalizing
 
-`Equals` performs deep equality (`reflect.DeepEqual`). For order-insensitive comparison, normalize first — `Normalize` converts all numbers to `float64` and sorts arrays deterministically by the canonical string of their elements:
+`Equals` performs exact Go deep equality (`reflect.DeepEqual`).
+
+`SemanticallyEquals` compares JSON meaning: object key order is ignored, array
+order remains significant, and equivalent number representations compare equal
+without converting integers to `float64`:
 
 ```go
 isEqual := obj1.Equals(obj2)
-isEquivalent := obj1.NormalizedClone().Equals(obj2.NormalizedClone())
+isJSONEquivalent := obj1.SemanticallyEquals(obj2)
+```
 
+For the separate use case where arrays must be treated as unordered
+multisets, normalize first. `Normalize` converts numbers to `float64` (which may
+lose precision for large integers) and recursively sorts arrays:
+
+```go
+isOrderInsensitive := obj1.NormalizedClone().Equals(obj2.NormalizedClone())
 obj.Normalize() // in place
 ```
 
