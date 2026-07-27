@@ -787,14 +787,15 @@ func jvAddValueToArray(jArray *[]interface{}, v interface{}) bool {
 }
 
 func jvSetArrayValue(jArray *[]interface{}, id int, v interface{}) bool {
-	if id >= 0 && len(*jArray) >= 0 {
-		for ok := true; ok; ok = (len(*jArray) <= id) {
-			jvAddValueToArray(jArray, nil)
-		}
-		(*jArray)[id] = v
-		return true
+	if id < 0 {
+		return false
 	}
-	return false
+	// Grow with nils only up to the index; an existing index is overwritten in place.
+	for len(*jArray) <= id {
+		jvAddValueToArray(jArray, nil)
+	}
+	(*jArray)[id] = v
+	return true
 }
 
 // SetByPath sets a value at the specified path in the JSON structure.
