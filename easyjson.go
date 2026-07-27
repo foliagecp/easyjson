@@ -6,6 +6,8 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"math"
+	"math/big"
 	"reflect"
 	"sort"
 	"strconv"
@@ -37,7 +39,7 @@ func NewJSON(value interface{}) JSON {
 
 	val := reflect.ValueOf(value)
 
-	for val.Kind() == reflect.Ptr {
+	for val.Kind() == reflect.Pointer {
 		if val.IsNil() {
 			return JSON{Value: nil}
 		}
@@ -146,6 +148,359 @@ func NewJSONArray() JSON {
 // Equals compares two JSON values for deep equality.
 func (j1 JSON) Equals(j2 JSON) bool {
 	return reflect.DeepEqual(j1.Value, j2.Value)
+}
+
+// SemanticallyEquals compares two JSON values by their JSON meaning.
+// Object key order is ignored, array order is significant, and equivalent
+// number representations such as 1, 1.0, and 1e0 compare equal without
+// converting integers to float64.
+//
+// Typed nil maps and slices are treated as JSON null even though IsObject and
+// IsArray report their Go container type; nil pointers are also treated as
+// null. Values that cannot be represented in JSON (NaN, infinities, invalid
+// json.Number values, or cyclic pointer chains) compare unequal to every value,
+// including themselves. Cycles through maps and slices are detected to
+// guarantee termination, but cyclic containers remain outside the JSON model.
+func (j1 JSON) SemanticallyEquals(j2 JSON) bool {
+	return semanticallyEqual(j1.Value, j2.Value, make(map[semanticVisit]bool))
+}
+
+type semanticVisit struct {
+	left, right uintptr
+	typ         reflect.Type
+}
+
+func semanticallyEqual(a, b interface{}, visited map[semanticVisit]bool) bool {
+	var valid bool
+	a, valid = dereferenceJSONValue(a)
+	if !valid {
+		return false
+	}
+	b, valid = dereferenceJSONValue(b)
+	if !valid {
+		return false
+	}
+
+	aNull := isJSONNull(a)
+	bNull := isJSONNull(b)
+	if aNull || bNull {
+		return aNull && bNull
+	}
+
+	if equal, done := sameTypeJSONNumberEqual(a, b); done {
+		return equal
+	}
+
+	aNumber, aIsNumber, aValidNumber := semanticJSONNumber(a)
+	bNumber, bIsNumber, bValidNumber := semanticJSONNumber(b)
+	if aIsNumber || bIsNumber {
+		return aIsNumber && bIsNumber &&
+			aValidNumber && bValidNumber &&
+			aNumber.equal(bNumber)
+	}
+
+	switch aValue := a.(type) {
+	case map[string]interface{}:
+		bValue, ok := b.(map[string]interface{})
+		if !ok || len(aValue) != len(bValue) {
+			return false
+		}
+		if seenSemanticPair(aValue, bValue, visited) {
+			return true
+		}
+		for key, aChild := range aValue {
+			bChild, ok := bValue[key]
+			if !ok || !semanticallyEqual(aChild, bChild, visited) {
+				return false
+			}
+		}
+		return true
+
+	case []interface{}:
+		bValue, ok := b.([]interface{})
+		if !ok || len(aValue) != len(bValue) {
+			return false
+		}
+		if seenSemanticPair(aValue, bValue, visited) {
+			return true
+		}
+		for index, aChild := range aValue {
+			if !semanticallyEqual(aChild, bValue[index], visited) {
+				return false
+			}
+		}
+		return true
+
+	default:
+		return reflect.DeepEqual(a, b)
+	}
+}
+
+func dereferenceJSONValue(value interface{}) (interface{}, bool) {
+	seen := make(map[uintptr]struct{})
+	for value != nil {
+		rv := reflect.ValueOf(value)
+		if rv.Kind() != reflect.Pointer {
+			return value, true
+		}
+		if rv.IsNil() {
+			return nil, true
+		}
+		pointer := rv.Pointer()
+		if _, exists := seen[pointer]; exists {
+			return nil, false
+		}
+		seen[pointer] = struct{}{}
+		value = rv.Elem().Interface()
+	}
+	return nil, true
+}
+
+func isJSONNull(value interface{}) bool {
+	if value == nil {
+		return true
+	}
+	rv := reflect.ValueOf(value)
+	switch rv.Kind() {
+	case reflect.Map, reflect.Slice:
+		return rv.IsNil()
+	default:
+		return false
+	}
+}
+
+func seenSemanticPair(left, right interface{}, visited map[semanticVisit]bool) bool {
+	leftValue := reflect.ValueOf(left)
+	rightValue := reflect.ValueOf(right)
+	visit := semanticVisit{
+		left:  leftValue.Pointer(),
+		right: rightValue.Pointer(),
+		typ:   leftValue.Type(),
+	}
+	if visited[visit] {
+		return true
+	}
+	visited[visit] = true
+	return false
+}
+
+func sameTypeJSONNumberEqual(a, b interface{}) (bool, bool) {
+	switch aNumber := a.(type) {
+	case json.Number:
+		bNumber, ok := b.(json.Number)
+		if !ok || aNumber.String() != bNumber.String() {
+			return false, false
+		}
+		return isValidJSONNumber(aNumber.String()), true
+	case int:
+		bNumber, ok := b.(int)
+		return ok && aNumber == bNumber, ok
+	case int8:
+		bNumber, ok := b.(int8)
+		return ok && aNumber == bNumber, ok
+	case int16:
+		bNumber, ok := b.(int16)
+		return ok && aNumber == bNumber, ok
+	case int32:
+		bNumber, ok := b.(int32)
+		return ok && aNumber == bNumber, ok
+	case int64:
+		bNumber, ok := b.(int64)
+		return ok && aNumber == bNumber, ok
+	case uint:
+		bNumber, ok := b.(uint)
+		return ok && aNumber == bNumber, ok
+	case uint8:
+		bNumber, ok := b.(uint8)
+		return ok && aNumber == bNumber, ok
+	case uint16:
+		bNumber, ok := b.(uint16)
+		return ok && aNumber == bNumber, ok
+	case uint32:
+		bNumber, ok := b.(uint32)
+		return ok && aNumber == bNumber, ok
+	case uint64:
+		bNumber, ok := b.(uint64)
+		return ok && aNumber == bNumber, ok
+	case uintptr:
+		bNumber, ok := b.(uintptr)
+		return ok && aNumber == bNumber, ok
+	case float32:
+		bNumber, ok := b.(float32)
+		if !ok {
+			return false, false
+		}
+		return !math.IsNaN(float64(aNumber)) &&
+			!math.IsInf(float64(aNumber), 0) &&
+			aNumber == bNumber, true
+	case float64:
+		bNumber, ok := b.(float64)
+		if !ok {
+			return false, false
+		}
+		return !math.IsNaN(aNumber) &&
+			!math.IsInf(aNumber, 0) &&
+			aNumber == bNumber, true
+	default:
+		return false, false
+	}
+}
+
+type semanticNumber struct {
+	negative bool
+	digits   string
+	exponent *big.Int
+}
+
+func (number semanticNumber) equal(other semanticNumber) bool {
+	return number.negative == other.negative &&
+		number.digits == other.digits &&
+		number.exponent.Cmp(other.exponent) == 0
+}
+
+// semanticJSONNumber returns a canonical decimal value, whether value has a
+// numeric Go type, and whether it is a valid finite JSON number. Float values
+// use the shortest decimal form that preserves their JSON serialization.
+func semanticJSONNumber(value interface{}) (semanticNumber, bool, bool) {
+	var encoded string
+
+	switch number := value.(type) {
+	case json.Number:
+		encoded = number.String()
+	case int:
+		encoded = strconv.FormatInt(int64(number), 10)
+	case int8:
+		encoded = strconv.FormatInt(int64(number), 10)
+	case int16:
+		encoded = strconv.FormatInt(int64(number), 10)
+	case int32:
+		encoded = strconv.FormatInt(int64(number), 10)
+	case int64:
+		encoded = strconv.FormatInt(number, 10)
+	case uint:
+		encoded = strconv.FormatUint(uint64(number), 10)
+	case uint8:
+		encoded = strconv.FormatUint(uint64(number), 10)
+	case uint16:
+		encoded = strconv.FormatUint(uint64(number), 10)
+	case uint32:
+		encoded = strconv.FormatUint(uint64(number), 10)
+	case uint64:
+		encoded = strconv.FormatUint(number, 10)
+	case uintptr:
+		encoded = strconv.FormatUint(uint64(number), 10)
+	case float32:
+		if math.IsNaN(float64(number)) || math.IsInf(float64(number), 0) {
+			return semanticNumber{}, true, false
+		}
+		encoded = strconv.FormatFloat(float64(number), 'g', -1, 32)
+	case float64:
+		if math.IsNaN(number) || math.IsInf(number, 0) {
+			return semanticNumber{}, true, false
+		}
+		encoded = strconv.FormatFloat(number, 'g', -1, 64)
+	default:
+		return semanticNumber{}, false, false
+	}
+
+	number, ok := canonicalSemanticNumber(encoded)
+	return number, true, ok
+}
+
+func canonicalSemanticNumber(encoded string) (semanticNumber, bool) {
+	if !isValidJSONNumber(encoded) {
+		return semanticNumber{}, false
+	}
+
+	number := semanticNumber{exponent: new(big.Int)}
+	if encoded[0] == '-' {
+		number.negative = true
+		encoded = encoded[1:]
+	}
+
+	mantissa := encoded
+	if exponentIndex := strings.IndexAny(encoded, "eE"); exponentIndex >= 0 {
+		mantissa = encoded[:exponentIndex]
+		if _, ok := number.exponent.SetString(encoded[exponentIndex+1:], 10); !ok {
+			return semanticNumber{}, false
+		}
+	}
+
+	fractionLength := 0
+	if dotIndex := strings.IndexByte(mantissa, '.'); dotIndex >= 0 {
+		fractionLength = len(mantissa) - dotIndex - 1
+		mantissa = mantissa[:dotIndex] + mantissa[dotIndex+1:]
+	}
+
+	mantissa = strings.TrimLeft(mantissa, "0")
+	if mantissa == "" {
+		number.negative = false
+		number.digits = "0"
+		number.exponent.SetInt64(0)
+		return number, true
+	}
+
+	digitsWithoutTrailingZeros := strings.TrimRight(mantissa, "0")
+	trailingZeros := len(mantissa) - len(digitsWithoutTrailingZeros)
+	number.digits = digitsWithoutTrailingZeros
+	number.exponent.Sub(number.exponent, big.NewInt(int64(fractionLength)))
+	number.exponent.Add(number.exponent, big.NewInt(int64(trailingZeros)))
+	return number, true
+}
+
+func isValidJSONNumber(encoded string) bool {
+	if encoded == "" {
+		return false
+	}
+
+	index := 0
+	if encoded[index] == '-' {
+		index++
+		if index == len(encoded) {
+			return false
+		}
+	}
+
+	switch {
+	case encoded[index] == '0':
+		index++
+		if index < len(encoded) && encoded[index] >= '0' && encoded[index] <= '9' {
+			return false
+		}
+	case encoded[index] >= '1' && encoded[index] <= '9':
+		for index < len(encoded) && encoded[index] >= '0' && encoded[index] <= '9' {
+			index++
+		}
+	default:
+		return false
+	}
+
+	if index < len(encoded) && encoded[index] == '.' {
+		index++
+		fractionStart := index
+		for index < len(encoded) && encoded[index] >= '0' && encoded[index] <= '9' {
+			index++
+		}
+		if index == fractionStart {
+			return false
+		}
+	}
+
+	if index < len(encoded) && (encoded[index] == 'e' || encoded[index] == 'E') {
+		index++
+		if index < len(encoded) && (encoded[index] == '+' || encoded[index] == '-') {
+			index++
+		}
+		exponentStart := index
+		for index < len(encoded) && encoded[index] >= '0' && encoded[index] <= '9' {
+			index++
+		}
+		if index == exponentStart {
+			return false
+		}
+	}
+
+	return index == len(encoded)
 }
 
 type pathIter struct {

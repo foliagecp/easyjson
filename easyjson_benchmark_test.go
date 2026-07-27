@@ -309,6 +309,44 @@ func BenchmarkClone(b *testing.B) {
 	}
 }
 
+func semanticEqualsBenchmarkValues() (JSON, JSON) {
+	left := NewJSON(map[string]interface{}{
+		"a": int64(1),
+		"b": float64(2),
+		"c": uint32(3),
+		"s": "value",
+	})
+	right := NewJSON(map[string]interface{}{
+		"s": "value",
+		"c": uint32(3),
+		"b": float64(2),
+		"a": int64(1),
+	})
+	return left, right
+}
+
+func BenchmarkEqualsSmallObject(b *testing.B) {
+	left, right := semanticEqualsBenchmarkValues()
+
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		if !left.Equals(right) {
+			b.Fatal("values must be exactly equal")
+		}
+	}
+}
+
+func BenchmarkSemanticallyEqualsSmallObject(b *testing.B) {
+	left, right := semanticEqualsBenchmarkValues()
+
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		if !left.SemanticallyEquals(right) {
+			b.Fatal("values must be semantically equal")
+		}
+	}
+}
+
 // ------------------------------------
 // Sanity for fixtures used by benches
 // ------------------------------------
